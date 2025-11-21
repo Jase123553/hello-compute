@@ -1,0 +1,177 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+import random
+import asyncio
+
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# -------------------- BOT READY EVENT -------------------- #
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands")
+    except Exception as e:
+        print(e)
+
+# -------------------- PERMISSION CHECK -------------------- #
+def is_admin():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        return interaction.user.guild_permissions.administrator
+    return app_commands.check(predicate)
+
+# -------------------- GENERAL COMMANDS -------------------- #
+@bot.tree.command(name="help", description="Shows a list of all available commands")
+async def help_command(interaction: discord.Interaction):
+    commands_list = """
+**General:** /help, /info, /ping
+**Moderation:** /kick, /ban, /mute, /unmute, /warn, /warnings
+**Fun:** /roll, /flip, /say, /avatar, /hug, /slap
+**Server Info:** /server, /members, /roles, /channels
+**Utility:** /poll, /remind, /uptime, /weather
+"""
+    await interaction.response.send_message(commands_list)
+
+@bot.tree.command(name="info", description="Shows information about the bot")
+async def info(interaction: discord.Interaction):
+    await interaction.response.send_message(f"I'm {bot.user.name}, a custom Discord bot!")
+
+@bot.tree.command(name="ping", description="Checks the bot's latency")
+async def ping(interaction: discord.Interaction):
+    latency = round(bot.latency * 1000)
+    await interaction.response.send_message(f"Pong! Latency: {latency}ms")
+
+# -------------------- MODERATION COMMANDS -------------------- #
+@bot.tree.command(name="kick", description="Kick a member from the server")
+@app_commands.describe(user="User to kick", reason="Reason for kick")
+@is_admin()
+async def kick(interaction: discord.Interaction, user: discord.Member, reason: str = None):
+    await user.kick(reason=reason)
+    await interaction.response.send_message(f"{user.mention} has been kicked. Reason: {reason}")
+
+@bot.tree.command(name="ban", description="Ban a member from the server")
+@app_commands.describe(user="User to ban", reason="Reason for ban")
+@is_admin()
+async def ban(interaction: discord.Interaction, user: discord.Member, reason: str = None):
+    await user.ban(reason=reason)
+    await interaction.response.send_message(f"{user.mention} has been banned. Reason: {reason}")
+
+@bot.tree.command(name="mute", description="Mute a member temporarily")
+@app_commands.describe(user="User to mute", duration="Duration in minutes")
+@is_admin()
+async def mute(interaction: discord.Interaction, user: discord.Member, duration: int = 0):
+    muted_role = discord.utils.get(interaction.guild.roles, name="Muted")
+    if not muted_role:
+        muted_role = await interaction.guild.create_role(name="Muted")
+        for channel in interaction.guild.channels:
+            await channel.set_permissions(muted_role, speak=False, send_messages=False)
+    await user.add_roles(muted_role)
+    await interaction.response.send_message(f"{user.mention} has been muted for {duration} minutes.")
+    if duration > 0:
+        await asyncio.sleep(duration * 60)
+        await user.remove_roles(muted_role)
+        await interaction.followup.send(f"{user.mention} has been unmuted.")
+
+@bot.tree.command(name="unmute", description="Unmute a member")
+@app_commands.describe(user="User to unmute")
+@is_admin()
+async def unmute(interaction: discord.Interaction, user: discord.Member):
+    muted_role = discord.utils.get(interaction.guild.roles, name="Muted")
+    if muted_role in user.roles:
+        await user.remove_roles(muted_role)
+        await interaction.response.send_message(f"{user.mention} has been unmuted.")
+    else:
+        await interaction.response.send_message(f"{user.mention} is not muted.")
+
+@bot.tree.command(name="warn", description="Warn a member")
+@app_commands.describe(user="User to warn", reason="Reason for warning")
+@is_admin()
+async def warn(interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+    await interaction.response.send_message(f"{user.mention} has been warned. Reason: {reason}")
+
+# -------------------- FUN COMMANDS -------------------- #
+@bot.tree.command(name="roll", description="Roll a dice")
+@app_commands.describe(sides="Number of sides (default 6)")
+async def roll(interaction: discord.Interaction, sides: int = 6):
+    result = random.randint(1, sides)
+    await interaction.response.send_message(f"🎲 You rolled: {result}")
+
+@bot.tree.command(name="flip", description="Flip a coin")
+async def flip(interaction: discord.Interaction):
+    result = random.choice(["Heads", "Tails"])
+    await interaction.response.send_message(f"🪙 It's {result}!")
+
+@bot.tree.command(name="say", description="Make the bot say something")
+@app_commands.describe(message="Message to say")
+async def say(interaction: discord.Interaction, message: str):
+    await interaction.response.send_message(message)
+
+@bot.tree.command(name="avatar", description="Shows the avatar of a user")
+@app_commands.describe(user="User to show avatar of")
+async def avatar(interaction: discord.Interaction, user: discord.User):
+    await interaction.response.send_message(user.avatar.url)
+
+@bot.tree.command(name="hug", description="Send a hug to someone")
+@app_commands.describe(user="User to hug")
+async def hug(interaction: discord.Interaction, user: discord.Member):
+    await interaction.response.send_message(f"{interaction.user.mention} hugs {user.mention}! 🤗")
+
+@bot.tree.command(name="slap", description="Slap someone")
+@app_commands.describe(user="User to slap")
+async def slap(interaction: discord.Interaction, user: discord.Member):
+    await interaction.response.send_message(f"{interaction.user.mention} slaps {user.mention}! 🖐️")
+
+# -------------------- SERVER INFO COMMANDS -------------------- #
+@bot.tree.command(name="server", description="Shows server information")
+async def server(interaction: discord.Interaction):
+    guild = interaction.guild
+    await interaction.response.send_message(
+        f"Server Name: {guild.name}\nTotal Members: {guild.member_count}\nRegion: {guild.region}"
+    )
+
+@bot.tree.command(name="members", description="Shows member count")
+async def members(interaction: discord.Interaction):
+    humans = sum(1 for m in interaction.guild.members if not m.bot)
+    bots = sum(1 for m in interaction.guild.members if m.bot)
+    await interaction.response.send_message(f"Humans: {humans}\nBots: {bots}\nTotal: {interaction.guild.member_count}")
+
+@bot.tree.command(name="roles", description="Lists all server roles")
+async def roles(interaction: discord.Interaction):
+    role_list = [role.name for role in interaction.guild.roles if role.name != "@everyone"]
+    await interaction.response.send_message("Roles: " + ", ".join(role_list))
+
+@bot.tree.command(name="channels", description="Lists all server channels")
+async def channels(interaction: discord.Interaction):
+    channel_list = [channel.name for channel in interaction.guild.channels]
+    await interaction.response.send_message("Channels: " + ", ".join(channel_list))
+
+# -------------------- UTILITY COMMANDS -------------------- #
+@bot.tree.command(name="poll", description="Create a simple poll")
+@app_commands.describe(question="Question to ask")
+async def poll(interaction: discord.Interaction, question: str):
+    message = await interaction.channel.send(f"📊 **Poll:** {question}")
+    await message.add_reaction("✅")
+    await message.add_reaction("❌")
+    await interaction.response.send_message("Poll created!", ephemeral=True)
+
+@bot.tree.command(name="remind", description="Send a reminder")
+@app_commands.describe(time="Time in minutes", message="Message to remind")
+async def remind(interaction: discord.Interaction, time: int, message: str):
+    await interaction.response.send_message(f"⏰ Reminder set for {time} minutes.", ephemeral=True)
+    await asyncio.sleep(time * 60)
+    await interaction.followup.send(f"Reminder: {message}")
+
+@bot.tree.command(name="uptime", description="Shows bot uptime")
+async def uptime(interaction: discord.Interaction):
+    await interaction.response.send_message("Bot has been running since it was last started.")
+
+@bot.tree.command(name="weather", description="Shows weather for a location (placeholder)")
+@app_commands.describe(location="Location to check weather for")
+async def weather(interaction: discord.Interaction, location: str):
+    await interaction.response.send_message(f"Weather info for {location} is not implemented yet.")
+
+# -------------------- RUN BOT -------------------- #
+bot.run("YOUR_BOT_TOKEN")
